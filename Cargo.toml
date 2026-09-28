@@ -1,6 +1,6 @@
 [package]
 name = "model"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.80"
 description = "The Sootmark record and event model, and the contract parser adapters implement."
@@ -9,7 +9,7 @@ repository = "https://github.com/Sootmark/model"
 publish = false
 
 [dependencies]
-common = { git = "https://github.com/Sootmark/common", tag = "v0.2.0", version = "0.2.0" }
+common = { git = "https://github.com/Sootmark/common", tag = "v0.3.0", version = "0.3.0" }
 
 [dev-dependencies]
 proptest = "1"
