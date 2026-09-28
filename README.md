@@ -2,6 +2,11 @@
 
 The Sootmark record and event model, and the adapter contract.
 
+```toml
+[dependencies]
+sootmark-model = "0.1"
+```
+
 Records carry full fidelity and provenance: evidence hash, physical locator, parser name and version, typed fields, shared facets and timestamps with their meaning. Record ids are derived from physical location, never parse order, so marks and findings survive re-parsing. The `adapter` module defines the contract every parser adapter keeps: deterministic, never silent, never panics, honest provenance, physical locators.
 
 ## Quality
