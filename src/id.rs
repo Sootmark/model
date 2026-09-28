@@ -1,5 +1,5 @@
+use common::sha256::Sha256;
 use core::fmt;
-use sha2::{Digest, Sha256};
 
 use crate::locator::encode_str;
 use crate::{Locator, Namespace};
@@ -19,7 +19,7 @@ impl EvidenceId {
     /// large files and uses [`EvidenceId::from_sha256`]).
     #[must_use]
     pub fn of_content(content: &[u8]) -> Self {
-        Self(Sha256::digest(content).into())
+        Self(Sha256::digest(content))
     }
 
     /// The digest bytes.
@@ -120,5 +120,28 @@ mod tests {
         assert!(id
             .chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+}
+
+#[cfg(test)]
+mod stability {
+    use super::*;
+
+    /// Record ids must never change for the same evidence and location, or
+    /// every mark and finding in existing cases would be orphaned.
+    #[test]
+    fn record_id_is_pinned() {
+        let evidence = EvidenceId::of_content(b"evidence");
+        let id = RecordId::derive(
+            &evidence,
+            Namespace::new("windows.evtx"),
+            &Locator::ByteOffset(4096),
+        );
+        // `printf 'evidence' | shasum -a 256`
+        assert_eq!(
+            evidence.to_string(),
+            "ee8250fb76e094b34b471f13a73dbbe51d1ae142e9df59d7c0d31ec20f0a0a8e"
+        );
+        assert_eq!(id.to_string(), "c5351d8edd21a434abbace07a8ba7ae7");
     }
 }
