@@ -28,6 +28,10 @@ pub struct Input<'a> {
     pub name: &'a str,
     /// The file content.
     pub data: &'a [u8],
+    /// When the file was last modified, as the collection or image recorded
+    /// it; `None` when it didn't. Formats whose times lack a year (classic
+    /// syslog) date their entries from it.
+    pub modified: Option<common::time::Ts>,
 }
 
 /// How confident an adapter is that it can parse a file.
