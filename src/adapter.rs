@@ -16,6 +16,7 @@
 //!    lives, not the order it was read in.
 
 use core::fmt;
+use std::io::Read;
 
 use crate::{EvidenceId, Locator, Namespace, ParserInfo, Record};
 
@@ -31,6 +32,20 @@ pub struct Input<'a> {
     /// When the file was last modified, as the collection or image recorded
     /// it; `None` when it didn't. Formats whose times lack a year (classic
     /// syslog) date their entries from it.
+    pub modified: Option<common::time::Ts>,
+}
+
+/// What an adapter is asked to parse as a stream: an [`Input`] without the
+/// content, which comes from a reader.
+#[derive(Debug, Clone, Copy)]
+pub struct StreamInput<'a> {
+    /// Identity of the evidence file (SHA-256 of its content).
+    pub evidence: EvidenceId,
+    /// File name or path inside the collection, for detection and messages.
+    pub name: &'a str,
+    /// The content's size in bytes.
+    pub size: u64,
+    /// When the file was last modified: as [`Input::modified`].
     pub modified: Option<common::time::Ts>,
 }
 
@@ -111,6 +126,19 @@ pub trait Adapter {
     /// # Errors
     /// A [`ParseError`] when the file as a whole can't be parsed.
     fn parse(&self, input: &Input<'_>, sink: &mut dyn Sink) -> Result<(), ParseError>;
+
+    /// Parse a file read from `content` rather than held in memory: for
+    /// files too large to hold (a USN journal of many gigabytes). The same
+    /// promises hold, and the records must be those [`Adapter::parse`]
+    /// gives. `None` when this adapter needs the whole file (the default).
+    fn parse_stream(
+        &self,
+        _input: &StreamInput<'_>,
+        _content: &mut dyn Read,
+        _sink: &mut dyn Sink,
+    ) -> Option<Result<(), ParseError>> {
+        None
+    }
 }
 
 /// A [`Sink`] that keeps everything in memory. For tests and small files.
