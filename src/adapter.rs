@@ -139,6 +139,26 @@ pub trait Adapter {
     ) -> Option<Result<(), ParseError>> {
         None
     }
+
+    /// Parse `input` with the SQLite write-ahead log found beside it (its
+    /// `-wal` file). Adapters of SQLite formats override this to read the
+    /// pair as SQLite would, and the log's older page versions too, where
+    /// deleted rows often survive; the same promises hold, and with an
+    /// empty log the records must be those [`Adapter::parse`] gives. The
+    /// default ignores the log: callers hand it only to adapters of SQLite
+    /// formats.
+    ///
+    /// # Errors
+    /// As [`Adapter::parse`].
+    fn parse_with_log(
+        &self,
+        input: &Input<'_>,
+        log: &[u8],
+        sink: &mut dyn Sink,
+    ) -> Result<(), ParseError> {
+        let _ = log;
+        self.parse(input, sink)
+    }
 }
 
 /// A [`Sink`] that keeps everything in memory. For tests and small files.
