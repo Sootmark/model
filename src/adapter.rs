@@ -159,6 +159,41 @@ pub trait Adapter {
         let _ = log;
         self.parse(input, sink)
     }
+
+    /// The other files, beside the one named `name` in its folder, this
+    /// adapter reads with it: the WMI repository's `INDEX.BTR` and
+    /// `MAPPING` files for its `OBJECTS.DATA`. Callers look them up
+    /// without case and hand those found to
+    /// [`Adapter::parse_with_companions`]. None by default.
+    fn companions(&self, name: &str) -> Vec<String> {
+        let _ = name;
+        Vec::new()
+    }
+
+    /// Parse `input` with the companion files found beside it (those
+    /// [`Adapter::companions`] names; any may be missing). The same
+    /// promises hold. The default ignores them.
+    ///
+    /// # Errors
+    /// As [`Adapter::parse`].
+    fn parse_with_companions(
+        &self,
+        input: &Input<'_>,
+        companions: &[Companion<'_>],
+        sink: &mut dyn Sink,
+    ) -> Result<(), ParseError> {
+        let _ = companions;
+        self.parse(input, sink)
+    }
+}
+
+/// A file read with another ([`Adapter::companions`]).
+#[derive(Debug, Clone, Copy)]
+pub struct Companion<'a> {
+    /// Its name, as [`Adapter::companions`] gave it.
+    pub name: &'a str,
+    /// Its content.
+    pub data: &'a [u8],
 }
 
 /// A [`Sink`] that keeps everything in memory. For tests and small files.
@@ -177,5 +212,58 @@ impl Sink for Collected {
 
     fn skipped(&mut self, skipped: Skipped) {
         self.skipped.push(skipped);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An adapter that records how many bytes it was given.
+    struct Counting;
+
+    impl Adapter for Counting {
+        fn parser(&self) -> ParserInfo {
+            ParserInfo {
+                name: "counting",
+                version: "1",
+            }
+        }
+
+        fn namespaces(&self) -> &'static [Namespace] {
+            &[]
+        }
+
+        fn probe(&self, _name: &str, _head: &[u8]) -> Confidence {
+            Confidence::No
+        }
+
+        fn parse(&self, input: &Input<'_>, sink: &mut dyn Sink) -> Result<(), ParseError> {
+            sink.skipped(Skipped {
+                locator: Locator::ByteOffset(input.data.len() as u64),
+                reason: "counted".to_owned(),
+            });
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn companions_default_to_none_and_are_ignored() {
+        assert!(Counting.companions("OBJECTS.DATA").is_empty());
+        let input = Input {
+            evidence: EvidenceId::of_content(b"abc"),
+            name: "x",
+            data: b"abc",
+            modified: None,
+        };
+        let companion = Companion {
+            name: "INDEX.BTR",
+            data: b"defgh",
+        };
+        let mut sink = Collected::default();
+        Counting
+            .parse_with_companions(&input, &[companion], &mut sink)
+            .unwrap();
+        assert_eq!(sink.skipped[0].locator, Locator::ByteOffset(3));
     }
 }
