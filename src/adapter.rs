@@ -16,6 +16,7 @@
 //!    lives, not the order it was read in.
 
 use core::fmt;
+use std::collections::BTreeMap;
 use std::io::Read;
 
 use crate::{EvidenceId, Locator, Namespace, ParserInfo, Record};
@@ -185,6 +186,63 @@ pub trait Adapter {
         let _ = companions;
         self.parse(input, sink)
     }
+
+    /// Parse `input` with the other files of the collection it came from,
+    /// looked up by path as the adapter needs them: formats whose files
+    /// name others anywhere in the collection (a macOS unified log's
+    /// tracev3 file reads its format strings from `uuidtext/` files named
+    /// by UUID). The same promises hold, and with an empty collection the
+    /// records must be those [`Adapter::parse`] gives. The default ignores
+    /// the collection.
+    ///
+    /// # Errors
+    /// As [`Adapter::parse`].
+    fn parse_with_collection(
+        &self,
+        input: &Input<'_>,
+        collection: &mut dyn Collection,
+        sink: &mut dyn Sink,
+    ) -> Result<(), ParseError> {
+        let _ = collection;
+        self.parse(input, sink)
+    }
+}
+
+/// The files of the collection an [`Input`] came from, for
+/// [`Adapter::parse_with_collection`]. Paths are those of the collection,
+/// as [`Input::name`] gives them, with `/` between folders; implementations
+/// may compare them without case, as the file systems evidence comes from
+/// often do.
+pub trait Collection {
+    /// The content of the file at `path`, or `None` when there is no such
+    /// file or it can't be read.
+    fn read(&mut self, path: &str) -> Option<Vec<u8>>;
+
+    /// The paths of the files directly in `folder`, sorted; empty when
+    /// there is no such folder.
+    fn list(&mut self, folder: &str) -> Vec<String>;
+}
+
+/// A collection held in memory, by path. For tests and small collections;
+/// an empty one stands for no other files.
+impl Collection for BTreeMap<String, Vec<u8>> {
+    fn read(&mut self, path: &str) -> Option<Vec<u8>> {
+        self.get(path).cloned()
+    }
+
+    fn list(&mut self, folder: &str) -> Vec<String> {
+        let prefix = match folder.trim_end_matches('/') {
+            "" => String::new(),
+            folder => format!("{folder}/"),
+        };
+        self.keys()
+            .filter(|path| {
+                path.strip_prefix(&prefix)
+                    .is_some_and(|name| !name.is_empty() && !name.contains('/'))
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 /// A file read with another ([`Adapter::companions`]).
@@ -265,5 +323,41 @@ mod tests {
             .parse_with_companions(&input, &[companion], &mut sink)
             .unwrap();
         assert_eq!(sink.skipped[0].locator, Locator::ByteOffset(3));
+    }
+
+    #[test]
+    fn the_collection_defaults_to_being_ignored() {
+        let input = Input {
+            evidence: EvidenceId::of_content(b"abc"),
+            name: "x",
+            data: b"abc",
+            modified: None,
+        };
+        let mut collection = BTreeMap::from([("y".to_owned(), b"defgh".to_vec())]);
+        let mut sink = Collected::default();
+        Counting
+            .parse_with_collection(&input, &mut collection, &mut sink)
+            .unwrap();
+        assert_eq!(sink.skipped[0].locator, Locator::ByteOffset(3));
+    }
+
+    #[test]
+    fn a_collection_in_memory_reads_and_lists_by_path() {
+        let mut collection: BTreeMap<String, Vec<u8>> = [
+            "a.txt",
+            "logs/b.log",
+            "logs/a.log",
+            "logs/old/c.log",
+            "logsx/d.log",
+        ]
+        .into_iter()
+        .map(|path| (path.to_owned(), path.as_bytes().to_vec()))
+        .collect();
+        assert_eq!(collection.read("logs/b.log"), Some(b"logs/b.log".to_vec()));
+        assert_eq!(collection.read("logs/missing.log"), None);
+        assert_eq!(collection.list("logs"), ["logs/a.log", "logs/b.log"]);
+        assert_eq!(collection.list("logs/"), ["logs/a.log", "logs/b.log"]);
+        assert_eq!(collection.list(""), ["a.txt"]);
+        assert!(collection.list("nowhere").is_empty());
     }
 }
